@@ -1,0 +1,6 @@
+@TaylorSwiftGuessGame_HostAddress = http://localhost:5028
+
+GET {{TaylorSwiftGuessGame_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
