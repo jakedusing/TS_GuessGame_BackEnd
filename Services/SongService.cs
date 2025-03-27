@@ -1,77 +1,101 @@
 using System;
 using System.Web;
+using HtmlAgilityPack;
 using Microsoft.AspNetCore.Components.Web;
+using Newtonsoft.Json.Linq;
 
 public class SongService
 {
+    private readonly IConfiguration _configuration;
     private static readonly HttpClient client = new HttpClient();
-    private static Random random = new Random();
-    
-    private static readonly string[] songs = new[]
+
+    public SongService(IConfiguration configuration)
     {
-        "Anti-Hero",
-        "Cruel Summer",
-        "Don't Blame Me",
-        "Shake It Off",
-        "Blank Space"
-    };
-
-    // Get random song and its lyrics
-    public async Task<Song> GetRandomSongAsync()
-    {
-        // pick a random song from the list
-        string songTitle = songs[random.Next(songs.Length)];
-
-        // get lyrics for the song
-        string lyrics = await GetLyricsAsync(songTitle);
-
-        return new Song { Title = songTitle, Lyrics = lyrics };
+        _configuration = configuration;
     }
 
-    // helper method to get the lyrics
-    private async Task<string> GetLyricsAsync(string songTitle)
+    public async Task<Song> GetLyricsAsync(string songTitle)
     {
-        try
-        {
-            // URL encode the song title to ensure spaces are replaced with %20
-            string encodedSongTitle = HttpUtility.UrlEncode(songTitle);
+        try {
+            string uid = _configuration.GetValue<string>("API:UID");
+            string token = _configuration.GetValue<string>("API:TOKEN");
 
-            encodedSongTitle = encodedSongTitle.Replace("+", "%20");
+            string encodedSongTitle = Uri.EscapeDataString(songTitle);
+            string encodedArtist = Uri.EscapeDataString("Taylor Swift");
 
-            // Construct the url to fetch lyrics
-            var url = $"https://api.lyrics.ovh/v1/Taylor%20Swift/{encodedSongTitle}";
+            string apiUrl = $"https://www.stands4.com/services/v2/lyrics.php?uid={uid}&tokenid={token}&term={encodedSongTitle}&artist={encodedArtist}&format=json";
 
-            Console.WriteLine("Requesting lyrics from URL: " + url);
+            Console.WriteLine($"Fetching song data from: {apiUrl}");
 
-            // Make HTTP request
-            var response = await client.GetStringAsync(url);
+            // Get API response
+            string response = await client.GetStringAsync(apiUrl);
+            JObject json = JObject.Parse(response);
 
-            // If the response is empty, it means we recieved a 404 or some other error
-            if (string.IsNullOrEmpty(response))
+            // Find the correct song entry for "Taylor Swift"
+            var songEntry = json["result"]?
+            .FirstOrDefault(entry => entry["artist"]?.ToString() == "Taylor Swift");
+
+            if (songEntry == null)
             {
-                Console.WriteLine("Received an empty response. The song may not be found.");
-                return "Lyrics not available";
+                Console.WriteLine("Song not found for Taylor Swift");
+                return null;
             }
 
-            // parse the response and extract lyrics
-            dynamic data = Newtonsoft.Json.JsonConvert.DeserializeObject(response);
+            string songLink = songEntry["song-link"]?.ToString();
+            if (string.IsNullOrEmpty(songLink))
+            {
+                Console.WriteLine("No song link found.");
+                return null;
+            }
 
-            // If lyrics are available, return them, otherwise return a fallback message
-            if (data?.lyrics != null)
+            Console.WriteLine($"Found song link: {songLink}");
+
+            // Step 2: Scrape lyrics from lyrics.com page
+            string lyrics = await ScrapeLyricsFromLyricsCom(songLink);
+
+            if (string.IsNullOrEmpty(lyrics))
             {
-                return data.lyrics;
+                Console.WriteLine("No lyrics found");
+                return null;
             }
-            else
+
+            // Create and return a Song object with title and lyrics
+            return new Song
             {
-                // print full response for debugging
-                Console.WriteLine("API Response: " + response);
-                return "Lyrics not available.";
-            }
+                Title = songTitle,
+                Lyrics = lyrics
+            };
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Error: " + ex.Message);
-            return $"Error retrieving lyrics: {ex.Message}";
+            Console.WriteLine($"Error: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task<string> ScrapeLyricsFromLyricsCom(string songUrl)
+    {
+        try
+        {
+            var web = new HtmlWeb();
+            var doc = await web.LoadFromWebAsync(songUrl);
+
+            // Lyrics are in a <pre> with class "lyric-body"
+            var lyricsNode = doc.DocumentNode.SelectSingleNode("//pre | //div[@class='lyric-body']");
+
+            if (lyricsNode == null)
+            {
+                Console.WriteLine("Lyrics not found on page.");
+                return "Lyrics not available";
+            }
+
+            string lyrics = lyricsNode.InnerText.Trim();
+            return lyrics.Replace("\r", "").Replace("\n", " ");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scrapping lyrics: {ex.Message}");
+            return "Error retrieving lyrics.";
         }
     }
 }

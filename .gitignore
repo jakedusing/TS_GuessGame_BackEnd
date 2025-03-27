@@ -12,3 +12,5 @@ obj/
 *.userosscache
 *.suo
 *.sln.docstates
+
+appsettings.json

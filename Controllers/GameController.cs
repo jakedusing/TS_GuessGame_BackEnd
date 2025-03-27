@@ -6,13 +6,27 @@ using System.Threading.Tasks;
 [ApiController]
 public class GameController : ControllerBase
 {
-    private readonly SongService songService = new SongService();
+    private readonly SongService _songService;
     private static Dictionary<string, GameSession> activeSessions = new Dictionary<string, GameSession>();
+
+    public GameController(SongService songService)
+    {
+        _songService = songService;
+    }
+
+    private static List<string> songTitles = new List<string>
+    {
+        "Lover", "Shake It Off", "Blank Space",
+
+    };
+
+    private static Random random = new Random();
 
     [HttpGet("start")]
     public async Task<IActionResult> StartGame()
     {
-        var song = await songService.GetRandomSongAsync();
+        var randomSongTitle = songTitles[random.Next(songTitles.Count)];
+        var song = await _songService.GetLyricsAsync(randomSongTitle);
         string sessionId = Guid.NewGuid().ToString();
         activeSessions[sessionId] = new GameSession(song);
 
