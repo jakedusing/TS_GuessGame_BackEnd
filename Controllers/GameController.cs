@@ -16,7 +16,7 @@ public class GameController : ControllerBase
 
     private static List<string> songTitles = new List<string>
     {
-        "Lover", "Shake It Off", "Blank Space",
+        "Lover", "Shake It Off", "Blank Space", "Long Live", "22",
 
     };
 
